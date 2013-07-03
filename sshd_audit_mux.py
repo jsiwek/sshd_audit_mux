@@ -54,7 +54,7 @@ def _CBExceptionHandler(func):
         try:
             func(obj, watcher, revents)
         except Exception:
-            logging.exception("{0}: exception".format(obj.__class__.__name__))
+            logging.exception("{0}: exception".format(obj))
             obj.stop()
     return wrap
 
@@ -272,6 +272,8 @@ class Client(object):
                                       self._write_handler)
         self._read_watcher.start()
 
+    def __str__(self):
+        return "{0} {1}".format(self.__class__.__name__, self._address)
 
     def stop(self, msg="close active connection from {0}"):
         """Stop watching for data on socket and close it.
@@ -460,6 +462,9 @@ class Server(object):
         self._tasks = Queue.Queue()
         self._shutdown_event = threading.Event()
         self._hup_event = threading.Event()
+
+    def __str__(self):
+        return "{0} {1}".format(self.__class__.__name__, self._address)
 
     def _prepare(self):
         """Initialize server components which ``stop()`` may render invalid.
