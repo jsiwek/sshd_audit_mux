@@ -29,6 +29,35 @@ import time
 import broccoli
 import pyev
 
+def parse_uristring(encoded_uri):
+    # TODO
+    return encoded_uri
+
+s_audit_type_callbacks = {
+    "addr":         lambda str: broccoli.addr(str),
+    "count":        lambda str: broccoli.count(str),
+    "double":       lambda str: float(str),
+    "int":          lambda str: int(str),
+    "port":         lambda str: broccoli.port(str),
+    "uristring":    parse_uristring,
+    "subnet":       lambda str: broccoli.subnet(str),
+    "time":         lambda str: broccoli.time(str),
+}
+
+def parse_s_audit_args(arg):
+    """Convert "type=value" argument from an instrumented SSHD to Bro type."""
+    # Split in to type, value pair.
+    arg = arg.split('=', 1)
+
+    if len(arg) == 1:
+        # It's just an event name.
+        return arg[0];
+
+    if arg[0] not in s_audit_type_callbacks:
+        logging.error("received unkown audit message type: {0}", arg[0])
+        return arg[1]
+
+    return s_audit_type_callbacks[arg[0]](arg[1])
 
 def _CBExceptionHandler(func):
     """ Return a function meant for wrapping an object's pyev callback method.
@@ -183,6 +212,15 @@ class BroccoliWorker(Worker):
             logging.info("opened log file: {0}".format(self._log_path))
         self._bc = broccoli.Connection(bro_peer)
 
+    def _send_event(self, task):
+        """Parse the task in to a Broccoli event and send it.
+
+        :param task: A complete audit message string.
+
+        """
+        args = map(parse_s_audit_args, filter(None, task.split(' ')))
+        self._bc.send(*args)
+
     def process_task(self, task, terminating=False):
         """Process a single task.
 
@@ -199,8 +237,7 @@ class BroccoliWorker(Worker):
         if task is not None:
             if self._log_file is not None:
                 self._log_file.write("{0}\n".format(task))
-            # TODO: actually send right events
-            self._bc.send("test1", task)
+            self._send_event(task)
             logging.debug("processed task '{0}'".format(task))
         self._bc.processInput()
 
