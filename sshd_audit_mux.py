@@ -156,7 +156,8 @@ class BroccoliWorker(Worker):
 
     """Emits a Broccoli event per task and optionally logs it to a file."""
 
-    def __init__(self, tasks, shutdown_event, hup_event, log_path=None):
+    def __init__(self, tasks, shutdown_event, hup_event,
+                 bro_peer="localhost:47757", log_path=None):
         """Initialize the worker thread.
 
         Connects to a Bro peer process and optionally opens a log file.
@@ -166,6 +167,8 @@ class BroccoliWorker(Worker):
             to indicate that this thread needs to finish soon.
         :param hup_event: A threading.Event instance set by another thread to
             indicate that a SIGHUP signal was received.
+        :param bro_peer: A string in "host:port" format specifying how
+            to connect to a Bro process.
         :param log_path: A string representing a path to a file which will
             log all complete messages from clients.
         :raises: IOError if a Broccoli connection cannot be established
@@ -178,7 +181,7 @@ class BroccoliWorker(Worker):
             self._log_path = log_path
             self._log_file = open(log_path, "w")
             logging.info("opened log file: {0}".format(self._log_path))
-        self._bc = broccoli.Connection("localhost:47758")
+        self._bc = broccoli.Connection(bro_peer)
 
     def process_task(self, task, terminating=False):
         """Process a single task.
@@ -619,7 +622,7 @@ if __name__ == "__main__":
                  help="enable debug level logging")
     p.add_option("-a", "--addr", type="string", default="localhost",
                  help="listen on given address (numeric IP or host name)")
-    p.add_option("-p", "--port", type="int", default=799,
+    p.add_option("-p", "--port", type="int", default=7999,
                  help="listen on given TCP port number")
     p.add_option("-c", "--cert", type="string", metavar="FILE",
                  help="path to SSL certificate w/ optional private key")
@@ -629,6 +632,9 @@ if __name__ == "__main__":
                  help="write all complete messages from clients to a file")
     p.add_option("-l", "--log", type="string", default=None, metavar="FILE",
                  help="send error/info/debug logs to a file")
+    p.add_option("-b", "--bro", type="string", default="localhost:47757",
+                 metavar="ADDR:PORT",
+                 help="address and port of a listening Bro process")
     options, args = p.parse_args()
 
     loglevel = logging.INFO
@@ -658,7 +664,8 @@ if __name__ == "__main__":
     )
 
     def thread_factory(tasks, shutdown_event, hup_event):
-        return BroccoliWorker(tasks, shutdown_event, hup_event, options.out)
+        return BroccoliWorker(tasks, shutdown_event, hup_event,
+                              options.bro, options.out)
 
     server = Server(SSHDAuditMuxClient, thread_factory, ssl_config,
                     pyev.default_loop(), (options.addr, options.port))
