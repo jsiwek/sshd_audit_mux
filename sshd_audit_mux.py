@@ -25,6 +25,7 @@ import ssl
 import sys
 import threading
 import time
+import traceback
 import urllib
 
 import broccoli
@@ -37,6 +38,9 @@ s_audit_type_map = {
     "int":          lambda str: int(str),
     "port":         lambda str: broccoli.port(str),
     "uristring":    lambda str: urllib.unquote_plus(str),
+    # Some instrumented SSHD versions may have a "string" type for (e.g.)
+    # session_request_direct_tcpip_3, but it's still URI encoded.
+    "string":       lambda str: urllib.unquote_plus(str),
     "subnet":       lambda str: broccoli.subnet(str),
     "time":         lambda str: broccoli.time(str),
 }
@@ -51,7 +55,7 @@ def s_audit_to_bro(type_, val):
 
     """
     if type_ not in s_audit_type_map:
-        logging.error("received unkown audit message type: {0}", type_)
+        logging.error("received unkown audit message type: {0}".format(type_))
         return val
 
     return s_audit_type_map[type_](val)
@@ -676,7 +680,8 @@ if __name__ == "__main__":
     p.add_option("-d", "--debug", action="store_true", default=False,
                  help="enable debug level logging")
     p.add_option("-a", "--addr", type="string", default="localhost",
-                 help="listen on given address (numeric IP or host name)")
+                 help=("listen on given address (numeric IP or host name), "
+                       "use an empty string for INADDR_ANY"))
     p.add_option("-p", "--port", type="int", default=7999,
                  help="listen on given TCP port number")
     p.add_option("-c", "--cert", type="string", metavar="FILE",
@@ -698,8 +703,11 @@ if __name__ == "__main__":
     logging.basicConfig(level=loglevel, filename=options.log,
                         format="%(asctime)s %(levelname)-8s %(message)s")
 
-    sys.excepthook = lambda *exc_info: logging.critical("Unhandled exception",
-                                                        exc_info=exc_info)
+    def hook(*exc_info):
+        traceback.print_exception(*exc_info)
+        logging.critical("Unhandled exception", exc_info=exc_info)
+
+    sys.excepthook = hook
 
     if ( (options.key is not None and options.cert is None) or
          (options.key is None and options.cert is None) ):
