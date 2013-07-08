@@ -111,9 +111,9 @@ event session_do_auth_3(ts: time, version: string, sid: string, cid: count, atyp
 	print "session_do_auth_3", ts, version, sid, cid, atype, type_ret;
 	}
 
-event session_exit_3(ts: time, version: string, sid: string, cid: count, channel: count, pid: count, status: count)
+event session_exit_3(ts: time, version: string, sid: string, cid: count, channel: count, pid: count, ststus: count)
 	{
-	print "session_exit_3", ts, version, sid, cid, channel, pid, status;
+	print "session_exit_3", ts, version, sid, cid, channel, pid, ststus;
 	}
 
 event session_input_channel_open_3(ts: time, version: string, sid: string, cid: count, tpe: count, ctype: string, rchan: int, rwindow: int, rmaxpack: int)
