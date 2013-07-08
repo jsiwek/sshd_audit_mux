@@ -25,13 +25,10 @@ import ssl
 import sys
 import threading
 import time
+import urllib
 
 import broccoli
 import pyev
-
-def parse_uristring(encoded_uri):
-    # TODO
-    return encoded_uri
 
 s_audit_type_map = {
     "addr":         lambda str: broccoli.addr(str),
@@ -39,7 +36,7 @@ s_audit_type_map = {
     "double":       lambda str: float(str),
     "int":          lambda str: int(str),
     "port":         lambda str: broccoli.port(str),
-    "uristring":    parse_uristring,
+    "uristring":    lambda str: urllib.unquote_plus(str),
     "subnet":       lambda str: broccoli.subnet(str),
     "time":         lambda str: broccoli.time(str),
 }
