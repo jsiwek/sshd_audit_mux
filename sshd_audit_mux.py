@@ -33,7 +33,7 @@ def parse_uristring(encoded_uri):
     # TODO
     return encoded_uri
 
-s_audit_type_callbacks = {
+s_audit_type_map = {
     "addr":         lambda str: broccoli.addr(str),
     "count":        lambda str: broccoli.count(str),
     "double":       lambda str: float(str),
@@ -44,20 +44,35 @@ s_audit_type_callbacks = {
     "time":         lambda str: broccoli.time(str),
 }
 
+def s_audit_to_bro(type_, val):
+    """Convert a string value from an instrumented SSHD to a Broccoli value.
+
+    :param type: The type indicated by the instrumented SSHD.
+    :param val: The string value to be converted.
+    :returns: Broccoli's representation of the value or the original value
+        if there was no known conversion.
+
+    """
+    if type_ not in s_audit_type_map:
+        logging.error("received unkown audit message type: {0}", type_)
+        return val
+
+    return s_audit_type_map[type_](val)
+
 def parse_s_audit_args(arg):
-    """Convert "type=value" argument from an instrumented SSHD to Bro type."""
-    # Split in to type, value pair.
+    """Convert "type=value" arg from instrumented SSHD to Broccoli value.
+
+    :param arg: A string that may be in "type=value" format.
+    :returns: The string if no "type=" is present or the type was unknown, or
+        the Broccoli representation of the value.
+
+    """
     arg = arg.split('=', 1)
 
     if len(arg) == 1:
-        # It's just an event name.
         return arg[0];
 
-    if arg[0] not in s_audit_type_callbacks:
-        logging.error("received unkown audit message type: {0}", arg[0])
-        return arg[1]
-
-    return s_audit_type_callbacks[arg[0]](arg[1])
+    return s_audit_to_bro(arg[0], arg[1])
 
 def _CBExceptionHandler(func):
     """ Return a function meant for wrapping an object's pyev callback method.
@@ -263,6 +278,7 @@ class BroccoliWorker(Worker):
         while self._bc.processInput():
             # Try to flush any remaining events.
             if time.time() - start > 5.0:
+                logging.warning("terminated before broccoli events flushed")
                 break;
 
 
