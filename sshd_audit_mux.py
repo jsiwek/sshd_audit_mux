@@ -679,9 +679,9 @@ if __name__ == "__main__":
     p = OptionParser()
     p.add_option("-d", "--debug", action="store_true", default=False,
                  help="enable debug level logging")
-    p.add_option("-a", "--addr", type="string", default="localhost",
+    p.add_option("-a", "--addr", type="string", default="",
                  help=("listen on given address (numeric IP or host name), "
-                       "use an empty string for INADDR_ANY"))
+                       "an empty string (the default) means INADDR_ANY"))
     p.add_option("-p", "--port", type="int", default=7999,
                  help="listen on given TCP port number")
     p.add_option("-c", "--cert", type="string", metavar="FILE",
