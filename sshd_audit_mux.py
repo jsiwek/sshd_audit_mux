@@ -17,7 +17,7 @@
 # TODO: Python 3 compat.  It first requires changes in Broccoli bindings.
 
 import errno
-import logging
+import logging, logging.handlers
 import Queue
 import signal
 import socket
@@ -30,6 +30,8 @@ import urllib
 
 import broccoli
 import pyev
+
+logger = logging.getLogger(__name__)
 
 s_audit_type_map = {
     "addr":         lambda str: broccoli.addr(str),
@@ -55,7 +57,7 @@ def s_audit_to_bro(type_, val):
 
     """
     if type_ not in s_audit_type_map:
-        logging.error("received unkown audit message type: {0}".format(type_))
+        logger.error("received unkown audit message type: {0}".format(type_))
         return val
 
     return s_audit_type_map[type_](val)
@@ -99,7 +101,7 @@ def _CBExceptionHandler(func):
         try:
             func(obj, watcher, revents)
         except Exception:
-            logging.exception("{0}: exception".format(obj))
+            logger.exception("{0}: exception".format(obj))
             obj.stop()
     return wrap
 
@@ -137,7 +139,7 @@ class Worker(threading.Thread):
                 self.handle_hangup()
                 self._hup_event.clear()
 
-        logging.debug("'{0}' got thread shutdown event".format(self.name))
+        logger.debug("'{0}' got thread shutdown event".format(self.name))
 
         while not self._tasks.empty():
             task = self.next_task()
@@ -147,7 +149,7 @@ class Worker(threading.Thread):
 
         self.finish()
 
-        logging.debug("'{0}' thread exiting".format(self.name))
+        logger.debug("'{0}' thread exiting".format(self.name))
 
     def handle_hangup(self):
         """Handle a SIGHUP signal reported by the main thread.
@@ -225,7 +227,7 @@ class BroccoliWorker(Worker):
         if log_path is not None:
             self._log_path = log_path
             self._log_file = open(log_path, "w")
-            logging.info("opened log file: {0}".format(self._log_path))
+            logger.info("opened log file: {0}".format(self._log_path))
         self._bc = broccoli.Connection(bro_peer)
 
     def _send_event(self, task):
@@ -254,7 +256,7 @@ class BroccoliWorker(Worker):
             if self._log_file is not None:
                 self._log_file.write("{0}\n".format(task))
             self._send_event(task)
-            logging.debug("processed task '{0}'".format(task))
+            logger.debug("processed task '{0}'".format(task))
         self._bc.processInput()
 
     def handle_hangup(self):
@@ -266,7 +268,7 @@ class BroccoliWorker(Worker):
         """
         if self._log_file is None:
             return
-        logging.info("got SIGHUP, re-open log: {0}".format(self._log_path))
+        logger.info("got SIGHUP, re-open log: {0}".format(self._log_path))
         self._log_file.close()
         self._log_file = open(self._log_path, "w")
 
@@ -274,12 +276,12 @@ class BroccoliWorker(Worker):
         """Close connection with Bro peer and the log file."""
         if self._log_file is not None:
             self._log_file.close()
-            logging.info("closed log file: {0}".format(self._log_path))
+            logger.info("closed log file: {0}".format(self._log_path))
         start = time.time()
         while self._bc.processInput():
             # Try to flush any remaining events.
             if time.time() - start > 5.0:
-                logging.warning("terminated before broccoli events flushed")
+                logger.warning("terminated before broccoli events flushed")
                 break;
 
 
@@ -313,7 +315,7 @@ class Client(object):
             try:
                 self._sock = ssl.wrap_socket(self._sock, **ssl_config)
             except ssl.SSLError:
-                logging.exception("refused {0}: SSL socket wrap error ".format(
+                logger.exception("refused {0}: SSL socket wrap error ".format(
                                                                 self._address))
                 self._sock.close()
                 raise
@@ -339,13 +341,13 @@ class Client(object):
         try:
             self._sock.close()
         except socket.error:
-            logging.exception("client close error {0}".format(self._address))
+            logger.exception("client close error {0}".format(self._address))
 
         self._read_watcher.stop()
         self._write_watcher.stop()
         self._read_watcher = self._write_watcher = None;
         self._server.unregister(self._address)
-        logging.info(msg.format(self._address))
+        logger.info(msg.format(self._address))
 
     def _handle_ssl_exception(self, err):
         """Return whether an ssl.SSLError exception could not be handled.
@@ -355,10 +357,10 @@ class Client(object):
 
         """
         if err.args[0] == ssl.SSL_ERROR_WANT_READ:
-            logging.debug("SSL client {0} want read".format(self._address))
+            logger.debug("SSL client {0} want read".format(self._address))
             return False
         elif err.args[0] == ssl.SSL_ERROR_WANT_WRITE:
-            logging.debug("SSL client {0} want write".format(self._address))
+            logger.debug("SSL client {0} want write".format(self._address))
             self._write_watcher.start()
             return False
         elif err.args[0] == ssl.SSL_ERROR_EOF:
@@ -451,7 +453,7 @@ class SSHDAuditMuxClient(Client):
         """
         super(SSHDAuditMuxClient, self).stop(msg)
         if self._data:
-            logging.debug("audit client {0} stop w/ partial msg: {1}".format(
+            logger.debug("audit client {0} stop w/ partial msg: {1}".format(
                                                     self._address, self._data))
 
     def _deliver_stream(self, buf):
@@ -475,8 +477,8 @@ class SSHDAuditMuxClient(Client):
         :param msg: A complete message on which a task can be based.
 
         """
-        logging.debug("audit client {0} got msg '{1}'".format(self._address,
-                                                              msg))
+        logger.debug("audit client {0} got msg '{1}'".format(self._address,
+                                                             msg))
         self._server.add_task(msg)
 
 
@@ -547,7 +549,7 @@ class Server(object):
         self._prepare()
         self._worker_thread.start()
         self._sock.listen(socket.SOMAXCONN)
-        logging.info("start listening on {0} w/ SSL config: {1}".format(
+        logger.info("start listening on {0} w/ SSL config: {1}".format(
                                             self._address, self._ssl_config))
 
         for w in self._watchers:
@@ -562,12 +564,12 @@ class Server(object):
 
         """
         self._loop.stop(pyev.EVBREAK_ALL)
-        logging.info("stop listening on {0}".format(self._address))
+        logger.info("stop listening on {0}".format(self._address))
 
         try:
             self._sock.close()
         except socket.error:
-            logging.exception("server close error: {0}".format(self._address))
+            logger.exception("server close error: {0}".format(self._address))
 
         while self._watchers:
             self._watchers.pop().stop()
@@ -586,7 +588,7 @@ class Server(object):
 
         while not self._tasks.empty():
             task = self._tasks.get()
-            logging.error("dropped unprocessed task '{0}'".format(task))
+            logger.error("dropped unprocessed task '{0}'".format(task))
             self._tasks.task_done()
 
     def unregister(self, address):
@@ -596,7 +598,7 @@ class Server(object):
 
         """
         if address not in self._clients:
-            logging.warning("unregister unknown client {0}".format(address))
+            logger.warning("unregister unknown client {0}".format(address))
         else:
             del self._clients[address]
 
@@ -610,7 +612,7 @@ class Server(object):
             self._tasks.put_nowait(task)
         except Queue.Full:
             # This shouldn't happen with an unbounded queue
-            logging.exception("failed to queue task '{0}'".format(task))
+            logger.exception("failed to queue task '{0}'".format(task))
 
     @_CBExceptionHandler
     def _signal_handler(self, watcher, revents):
@@ -655,12 +657,12 @@ class Server(object):
             if err.args[0] in (errno.EAGAIN, errno.EWOULDBLOCK):
                 return False
             if err.args[0] in (errno.ENFILE, errno.EMFILE):
-                logging.warning("refused connection due to fd overload")
+                logger.warning("refused connection due to fd overload")
                 return False
             else:
                 raise
         else:
-            logging.info("accept concurrent connection #{0} from {1}".format(
+            logger.info("accept concurrent connection #{0} from {1}".format(
                                         len(self._clients), client_address))
             try:
                 client = self._client_class(client_sock, client_address,
@@ -697,21 +699,32 @@ if __name__ == "__main__":
                  help="address and port of a listening Bro process")
     options, args = p.parse_args()
 
-    loglevel = logging.INFO
     if options.debug:
-        loglevel = logging.DEBUG
-    logging.basicConfig(level=loglevel, filename=options.log,
-                        format="%(asctime)s %(levelname)-8s %(message)s")
+        logger.setLevel(logging.DEBUG)
+    else:
+        logger.setLevel(logging.INFO)
+
+    formatter = logging.Formatter("%(asctime)s %(levelname)-8s %(message)s")
+
+    if options.log is not None:
+        handler = logging.handlers.WatchedFileHandler(options.log)
+    else:
+        handler = logging.StreamHandler()
+
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)
+
+    logging.captureWarnings(True)
 
     def hook(*exc_info):
         traceback.print_exception(*exc_info)
-        logging.critical("Unhandled exception", exc_info=exc_info)
+        logger.critical("Unhandled exception", exc_info=exc_info)
 
     sys.excepthook = hook
 
     if ( (options.key is not None and options.cert is None) or
          (options.key is None and options.cert is None) ):
-        logging.critical("An SSL certificate and private key must be provided")
+        logger.critical("An SSL certificate and private key must be provided")
         sys.exit(1)
 
     ssl_config = dict(
