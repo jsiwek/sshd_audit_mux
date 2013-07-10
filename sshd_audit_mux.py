@@ -65,7 +65,7 @@ def s_audit_to_bro(type_, val):
 
     return s_audit_type_map[type_](val)
 
-def parse_s_audit_args(arg):
+def parse_s_audit_arg(arg):
     """Convert "type=value" arg from instrumented SSHD to Broccoli value.
 
     :param arg: A string that may be in "type=value" format.
@@ -239,7 +239,10 @@ class BroccoliWorker(Worker):
         :param task: A complete audit message string.
 
         """
-        args = map(parse_s_audit_args, filter(None, task.split(' ')))
+        args = map(parse_s_audit_arg, filter(None, task.split(' ')))
+        if args[0] == "channel_notty_analysis_disable_3" and len(args) == 7:
+            # Older SSHDs may not include channel argument, add a dummy.
+            args.insert(5, broccoli.count(0))
         self._bc.send(*args)
 
     def process_task(self, task, terminating=False):
