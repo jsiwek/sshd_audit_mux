@@ -603,6 +603,8 @@ class Server(object):
             logger.error("dropped unprocessed task '{0}'".format(task))
             self._tasks.task_done()
 
+        logger.info("server stopped")
+
     def unregister(self, address):
         """Unregister a client connection.
 
