@@ -31,6 +31,9 @@ import urllib
 import broccoli
 import pyev
 
+# Equivalent to NERSCMSGBUF in instrumented SSHD code.
+MAX_MSG_SIZE = 4096
+
 logger = logging.getLogger(__name__)
 
 s_audit_type_map = {
@@ -376,7 +379,7 @@ class Client(object):
 
         """
         try:
-            buf = self._sock.recv(4096)
+            buf = self._sock.recv(MAX_MSG_SIZE)
         except ssl.SSLError as err:
             if self._handle_ssl_exception(err):
                 raise
@@ -463,6 +466,12 @@ class SSHDAuditMuxClient(Client):
 
         """
         self._data += buf
+        if ( len(self._data) >= MAX_MSG_SIZE and
+             self._data[:MAX_MSG_SIZE-1].rfind('\n') == -1 ):
+            truncated_msg = self._data[:MAX_MSG_SIZE-1]
+            logger.warning("recv'd truncated msg: '{0}'".format(truncated_msg))
+            self._handle_msg(truncated_msg)
+            self._data = self._data[MAX_MSG_SIZE-1:]
         idx = self._data.rfind('\n')
         if idx == -1:
             return
