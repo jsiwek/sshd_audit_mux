@@ -332,7 +332,10 @@ class Client(object):
                                      self._read_handler)
         self._write_watcher = pyev.Io(self._sock, pyev.EV_WRITE, loop,
                                       self._write_handler)
+        self._timeout_watcher = pyev.Timer(server.timeout, server.timeout,
+                                           loop, self._timeout_handler)
         self._read_watcher.start()
+        self._timeout_watcher.reset()
 
     def __str__(self):
         return "{0} {1}".format(self.__class__.__name__, self._address)
@@ -349,9 +352,11 @@ class Client(object):
         except socket.error:
             logger.exception("client close error {0}".format(self._address))
 
+        self._timeout_watcher.repeat = 0.0;
+        self._timeout_watcher.reset()
         self._read_watcher.stop()
         self._write_watcher.stop()
-        self._read_watcher = self._write_watcher = None;
+        self._read_watcher = self._write_watcher = self._timeout_watcher = None;
         self._server.unregister(self._address)
         logger.info(msg.format(self._address))
 
@@ -391,6 +396,7 @@ class Client(object):
                 raise
         else:
             if buf:
+                self._timeout_watcher.reset()
                 self._deliver_stream(buf)
             else:
                 self.stop(msg="connection closed by peer {0}")
@@ -421,6 +427,16 @@ class Client(object):
         """
         self._write_watcher.stop()
         self._read()
+
+    @_CBExceptionHandler
+    def _timeout_handler(self, watcher, revents):
+        """Handles timeouts of stale sockets.
+
+        :param watcher: The pyev.Watcher that triggered this callback.
+        :param revents: The event(s) that triggered the callback.
+
+        """
+        self.stop(msg="drop stale connection {0}")
 
     def _deliver_stream(self, buf):
         """Children may override this to handle data received over socket.
@@ -498,7 +514,8 @@ class Server(object):
 
     """A non-blocking socket server with optional SSL support."""
 
-    def __init__(self, client_class, thread_factory, ssl_config, loop, address):
+    def __init__(self, client_class, thread_factory, ssl_config, loop, address,
+                 timeout):
         """Initialize the socket server.
 
         :param client_class: Type of client which handles accepted connections.
@@ -515,8 +532,11 @@ class Server(object):
             ``(host, port, flowinfo, scopeid)`` tuple for IPv6 where ``host``
             is a string representing a host/domain name or a numeric address
             and ``port`` is an integer representing a TCP port.
+        :param timeout: number of seconds after which a stale client connection
+            is dropped.
 
         """
+        self.timeout = timeout
         self._client_class = client_class
         self._thread_factory = thread_factory
         self._ssl_config = ssl_config
@@ -711,6 +731,9 @@ if __name__ == "__main__":
     p.add_option("-b", "--bro", type="string", default="localhost:47757",
                  metavar="ADDR:PORT",
                  help="address and port of a listening Bro process")
+    p.add_option("-t", "--timeout", type="int", default=3600,
+                 help=("drop stale connections after given number of seconds, "
+                       "with 0 meaning never drop connections"))
     options, args = p.parse_args()
 
     if options.debug:
@@ -758,6 +781,7 @@ if __name__ == "__main__":
                               options.bro, options.out)
 
     server = Server(SSHDAuditMuxClient, thread_factory, ssl_config,
-                    pyev.default_loop(), (options.addr, options.port))
+                    pyev.default_loop(), (options.addr, options.port),
+                    options.timeout)
     p.destroy()
     server.start()
